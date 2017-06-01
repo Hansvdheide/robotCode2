@@ -1,0 +1,8 @@
+Debug
+Drivers
+Middlewares
+.cproject
+.custom.cfg
+.mxproject
+.project
+STM32F303VCTx_FLASH.ld
