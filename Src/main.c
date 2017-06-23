@@ -163,31 +163,33 @@ int main(void)
 
   while (1)
   {
+	  //Check the blue buttom (for debugging purposes)
 	  if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0)){
-		  //initRobo(&hspi3, freqChannel, address);
+		  //print all the registers of the NRF24 chip
 		  printAllRegisters(&hspi3);
-		  shoot(1, &hspi3, freqChannel, address);
-		  //HAL_Delay(1000);
+
+		  //bling LED's
 		  fun();
 	  }
 
+	  //check for interrupts of the NRF24 chip (messanges from the base station)
 	  if(irqRead(&hspi3)){
+		  //if the robot does not get a packet for a long time, it should stop for safety reasons. This line resets that counter
 		  breakCnt = 0;
+
+		  //read the message and put it in a struct
 		  roboCallback(&hspi3, &dataStruct);
 
-		  //first time kick
-
-
+		  //if there is a shoot command, shoot
+		  //kickprev!=dataStruct.kickForce prevents the robot from shooting twice in a row.
+		  //Shooting for a longer time is problematic, because it will short the battery over the solenoid.
 		  if (dataStruct.kickForce != 0 && kickprev!=dataStruct.kickForce){
-
 			  shoot(dataStruct.kickForce, &hspi3, freqChannel, address);
-
-
 		  }
-		  else{}
 
 		  kickprev = dataStruct.kickForce;
 
+		  //give the dribbler the right speed using pwm
 		  dribbler.Pulse=125*dataStruct.driblerSpeed;
 
 		  if (HAL_TIM_PWM_ConfigChannel(&htim2, &dribbler, TIM_CHANNEL_2) != HAL_OK){
@@ -195,23 +197,25 @@ int main(void)
 		  }
 
 		  HAL_TIM_PWM_Start(&htim2,TIM_CHANNEL_2);
+
+		  //print the packet to the screen if that debug option is selected
 		  if(showPacket){
-			  //sprintf(smallStrBuffer, "%i\n", dataStruct.kickForce);
-			  //TextOut(smallStrBuffer);
 			  printDataStruct(&dataStruct);
 		  }
-		  //TextOut("Hoera!\n");
+
+		  //calculate the speed of the individual motors using the commands from the base station and put it in a struct
 		  calcMotorSpeed(&dataStruct, &wheely, &prevWheelCommand);
+
+		  //print the calculated motor speeds to the screen if that debug option is selected
 		  if(showCalculation){
 			  sprintf(smallStrBuffer, "wheely: %i   %i   %i   %i\n", wheely.velocityWheel1, wheely.velocityWheel2, wheely.velocityWheel3, wheely.velocityWheel4);
 			  TextOut(smallStrBuffer);
 		  }
 	  }
 
-	  //REMOVED DELAY
 	  HAL_Delay(1);
 
-
+	//if the robot did not get messanges for a long time, break unless the debug option that disables this option is selected
 	if(breakCnt >= 250 && comFailSecurity == 1){
 		wheely.velocityWheel1 = 0;
 		wheely.velocityWheel2 = 0;
@@ -223,22 +227,22 @@ int main(void)
 
 	breakCnt++;
 
-
+	//if the robot gets a message over USB (done for debugging purposes)
 	if(usbLength != 0){
-		//TextOut("received Data\n");
 
+		//for every element in the USB-buffer (most often there is just one element)
 		for(int i = 0; i <= usbLength; i++){
 
-
-
+			//if the element is a number, interpretend it as a number.
 			if(usbData[i] >= 48 && usbData[i] <= 57){
-				//sprintf(smallStrBuffer, "i = %i; usbData[i] = %i; intToMotor = %i\n", i, usbData[i]-48, intToMotor);
 				sprintf(smallStrBuffer, "%i", usbData[i]-48);
 				TextOut(smallStrBuffer);
 				intToMotor = intToMotor*10;
 				intToMotor += (usbData[i] - 48);
 				stopSending = 1;
 			}
+
+			//if space is pressed, interpretend the number as a robot-speed and send a command to the FPGA
 			else if(usbData[i] == 32){
 				if(negative == 1){
 					intToMotor = -intToMotor;
@@ -253,11 +257,11 @@ int main(void)
 				stopSending = 0;
 				intToMotor = 0;
 			}
+			//if the '-' is presed, make the number negative
 			else if(usbData[i] == 45){
-				//sprintf(smallStrBuffer, "-");
-				//TextOut(smallStrBuffer);
 				negative = 1;
 			}
+			//if 's' is pressed, interpreted the number as a kicking-intensity, and send a command to the kicking-module
 			else if(usbData[i] == 's'){
 
 				shoot(intToMotor, &hspi3, freqChannel, address);
@@ -266,6 +270,7 @@ int main(void)
 				intToMotor = 0;
 
 			}
+			//if 'd' is pressed, interpreted the number as a dribler-intensity, and put the dribbler on
 			else if(usbData[i] == 'd'){
 				dribbler.Pulse=125*intToMotor;
 				stopSending = 0;
@@ -279,6 +284,7 @@ int main(void)
 
 				 HAL_TIM_PWM_Start(&htim2,TIM_CHANNEL_2);
 			}
+			//if 'i' is pressed, interpretend the number as the robot id, and send a message the the NRF24 chip to change the id.
 			else if(usbData[i] == 'i'){
 				if(intToMotor >= 0 && intToMotor <= 9){
 					address = intToMotor;
@@ -290,6 +296,7 @@ int main(void)
 					TextOut("error: id should be between 0 and 9");
 				}
 			}
+			//if 'p' is pressed, enable a debug option so that all messanges of the NRF24 module will be printed
 			else if(usbData[i] == 'p'){
 				if(showPacket == 0){
 					showPacket = 1;
@@ -300,6 +307,7 @@ int main(void)
 					TextOut("showPacket disabled\n");
 				}
 			}
+			//if 'p' is pressed, enable a debug option so that all calculated motor speed will be printed
 			else if(usbData[i] == 'c'){
 				if(showCalculation == 0){
 					showCalculation = 1;
@@ -310,6 +318,7 @@ int main(void)
 					TextOut("showCalculation disabled\n");
 				}
 			}
+			//if 'f' is pressed, enable a debug option so that all commands send to the FPGA, and all speeds of the wheels the FPGA send back will be printed
 			else if(usbData[i] == 'f'){
 				if(showFPGAdebug == 0){
 					showFPGAdebug = 1;
@@ -320,6 +329,8 @@ int main(void)
 					TextOut("showFPGAdebug disabled\n");
 				}
 			}
+			//if 'b' is pressed, disable the security that lets the robot stop if it gets no messanges.
+			//This is usefull when controlling the robot over USB.
 			else if(usbData[i] == 'b'){
 				if(comFailSecurity == 0){
 					comFailSecurity = 1;
@@ -330,13 +341,14 @@ int main(void)
 					TextOut("comFailSecurity disabled\n");
 				}
 			}
+			//if 'r' is pressed, print all registers of the NRF24 chip
 			else if(usbData[i] == 'r'){
 				//initRobo(&hspi3, freqChannel, address);
 				printAllRegisters(&hspi3);
 			}
+			//in all other cases, throw away the number
 			else if(usbData[i] != 0){
 				TextOut("no number send\n");
-
 
 				stopSending = 0;
 				intToMotor = 0;
@@ -347,7 +359,9 @@ int main(void)
 	}
 
 
+	//once in a while (loopcntr == 1 means every time, but this can be increased)
 	if(loopcntr == 1){
+		//send the wheelcommands to the FPGA
 		sendReceivePacket(&hspi1, &wheely, &backWheely);
 		if(showFPGAdebug){
 			uint8_t regTest;
@@ -356,8 +370,7 @@ int main(void)
 			sprintf(smallStrBuffer, "%i, %i, %i, %i, %x\n", backWheely.velocityWheel1, backWheely.velocityWheel2, backWheely.velocityWheel3, backWheely.velocityWheel4, backWheely.enablesWheels);
 			TextOut(smallStrBuffer);
 		}
-		//sprintf(smallStrBuffer, "%u, %u, %u, %u, %x\n", (unsigned int)wheely.velocityWheel1, (unsigned int)wheely.velocityWheel2, wheely.velocityWheel3, wheely.velocityWheel4, wheely.enablesWheels);
-		//TextOut(smallStrBuffer);
+
 		loopcntr = 0;
 	}
 
@@ -435,7 +448,9 @@ void SystemClock_Config(void)
 /* USER CODE BEGIN 4 */
 
 void shoot(uint8_t intensity, SPI_HandleTypeDef* spiHandle, uint8_t freqChannel, uint8_t address){
-	int period = 300 + intensity*4;
+	sprintf(smallStrBuffer, "intensity = %i\n", intensity);
+	TextOut(intensity);
+	int period = 1000 + intensity*15;
 
 	htim1.Init.Period = period;
 

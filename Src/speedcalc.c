@@ -33,18 +33,17 @@ void splitVector(float magnitude, float direction, float* xComponent, float* yCo
 	float cosDir = cos(direction);
 	float sinDir = sin(direction);
 
-	//sprintf(smallStrBuffer, "mag: %f;   cosDir: %f;   sinDir: %f;\n", magnitude, cosDir, sinDir);
-	//TextOut(smallStrBuffer);
 
 	*xComponent = cosDir*magnitude;
 	*yComponent = sinDir*magnitude;
 }
 
+//calculate speeds of each individual motor and output to a wheelVelocityPacket
 void calcMotorRaw(wheelVelocityPacket* calcPacket, float* prevWheelCommand, float vx, float vy, uint16_t w, uint8_t rotDir){
-	float wRadPerSec = (w/180.0)*PI;
+	float wRadPerSec;
 
 	float accStep = 1.0;
-	float accSlowlyUntil = 15.0;
+	float accSlowlyUntil = 1.0;
 
 	float wheelScalar = 1/_r;
 	float angularComponent;
@@ -58,6 +57,7 @@ void calcMotorRaw(wheelVelocityPacket* calcPacket, float* prevWheelCommand, floa
 		rotSign = 1;
 	}
 
+	wRadPerSec = (w/180.0)*PI;
 	angularComponent = rotSign*_R*wRadPerSec;
 
 	speedmotor[0] = (-cos(_a0)*vy*1.4 + sin(_a0)*vx + angularComponent)*wheelScalar;
@@ -92,51 +92,43 @@ void calcMotorRaw(wheelVelocityPacket* calcPacket, float* prevWheelCommand, floa
     prevWheelCommand[3] = speedmotor[3];
     calcPacket->velocityWheel4=calcFPGAFromRPS(speedmotor[3] / (2*PI));
 
-//    sprintf(smallStrBuffer, "wheelcommands: %f %f %f %f\n", speedmotor[0], speedmotor[1], speedmotor[2], speedmotor[3]);
-//    TextOut(smallStrBuffer);
 
 }
-void calcMotorStefan(dataPacket *dataStruct, wheelVelocityPacket *PacketSpeed){
-//	float xSpeed=0;
-//	float ySpeed=0;
-//	splitVector((float)dataStruct->robotVelocity, (float)dataStruct->movingDirection, &xSpeed, &ySpeed);
-//	float wheelScalar = 1/_r;
-//	int angularComponent = _R*dataStruct->movingDirection;
-//	float speedmotor[4];
-//	speedmotor[0] = (-1/sin(_a1)*xSpeed + -1/cos(_a1)*ySpeed + angularComponent)*wheelScalar;
-//	PacketSpeed->velocityWheel1=calcFPGAFromRPS(speedmotor[0]);
-//    speedmotor[1] = -1*((-1/sin(_a2)*xSpeed + -1/cos(_a2)*ySpeed + angularComponent)*wheelScalar);
-//	PacketSpeed->velocityWheel2=calcFPGAFromRPS(speedmotor[1]);
-//	speedmotor[2] = (-1/sin(_a3)*xSpeed + -1/cos(_a3)*ySpeed + angularComponent)*wheelScalar;
-//	PacketSpeed->velocityWheel3=calcFPGAFromRPS(speedmotor[2]);
-//	speedmotor[3] = -1*((-1/sin(_a4)*xSpeed + -1/cos(_a4)*ySpeed + angularComponent)*wheelScalar);
-//	PacketSpeed->velocityWheel4=calcFPGAFromRPS(speedmotor[3]);
-}
+
 
 void calcMotorSpeed (dataPacket *dataStruct, wheelVelocityPacket *packetSpeed, float *prevWheelCommand){
-	//see the paint file for clarification
-	float xSpeed=0;
-	float ySpeed=0;
 
+	float xSpeed=0; //positive x = moving forward
+	float ySpeed=0; //positive y = moving to the right
 
-
+	//split a vector in a x and y component, based on the magnitude and direction
 	splitVector((float)dataStruct->robotVelocity, (float)dataStruct->movingDirection, &xSpeed, &ySpeed);
+	//calculate the speed of each individual motor
 	calcMotorRaw(packetSpeed, prevWheelCommand, xSpeed, ySpeed,  dataStruct->angularVelocity, dataStruct->rotationDirection);
 }
 
+
+/*
 float calcRPSFromFGPA(int32_t iFPGASpeed){
 	return ((_FPGA_CLOCK_F )/(_POLE_PAIRS * _HALL_C_PER_ELROT * iFPGASpeed * _MECH_REDUCTION));
 };
 
 float calcRPMFromFGPA(int32_t iFPGASpeed){
 	return ((60 * _FPGA_CLOCK_F )/(_POLE_PAIRS * _HALL_C_PER_ELROT * iFPGASpeed * _MECH_REDUCTION));
-};
+};*/
 
+//this function calculates FPGA-units from rounds per second
+//FPGA unit: clock-cycles per HAL-effect update (the FPGA counts the number of clock-cycles between HAL-effect updates, and uses it as it's speed)
+//A motor has 6 HAL-effect updates per electric rotation (google working of brushless motor if this is not understood)
+//Our motor has 8 pairs of coils, so there are 8 electronic rotations per rotation of the shaft
+//Lastly, because of a gears, 3 rotations of the shaft results in 1 rotation of the wheel
+//min wheel speed = 1000000 FPGA-units
 int32_t calcFPGAFromRPS(float RPS){
     return (abs((_FPGA_CLOCK_F)/(_POLE_PAIRS * _HALL_C_PER_ELROT * _MECH_REDUCTION * RPS))>1000000 ? 0 : (_FPGA_CLOCK_F)/(_POLE_PAIRS * _HALL_C_PER_ELROT * _MECH_REDUCTION * RPS));
   };
 
+/*
 int32_t calcFPGAFromRPM(float RPM){
     return (abs((_FPGA_CLOCK_F)/(_POLE_PAIRS * _HALL_C_PER_ELROT * _MECH_REDUCTION * RPM/60))>1000000 ? 0 : (_FPGA_CLOCK_F)/(_POLE_PAIRS * _HALL_C_PER_ELROT * _MECH_REDUCTION * RPM/60));
-};
+};*/
 
